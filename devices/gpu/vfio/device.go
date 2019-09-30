@@ -1,4 +1,4 @@
-package nvidia
+package vfio
 
 import (
 	"context"
@@ -18,17 +18,19 @@ import (
 
 const (
 	// pluginName is the name of the plugin
-	pluginName = "nvidia-gpu"
+	pluginName = "vfio-gpu"
 
 	// vendor is the vendor providing the devices
 	vendor = "nvidia"
 
 	// deviceType is the type of device being returned
-	deviceType = device.DeviceTypeGPU
+	deviceType = device.DeviceTypeGPUVfio
 
 	// notAvailable value is returned to nomad server in case some properties were
 	// undetected by nvml driver
 	notAvailable = "N/A"
+
+	vfioDriver = "vfio-pci"
 )
 
 const (
@@ -47,7 +49,7 @@ var (
 	// PluginConfig is the nvidia factory function registered in the
 	// plugin catalog.
 	PluginConfig = &loader.InternalPluginConfig{
-		Factory: func(l log.Logger) interface{} { return NewNvidiaDevice(l) },
+		Factory: func(l log.Logger) interface{} { return NewVfioGpuDevice(l) },
 	}
 
 	// pluginInfo describes the plugin
@@ -60,10 +62,6 @@ var (
 
 	// configSpec is the specification of the plugin's configuration
 	configSpec = hclspec.NewObject(map[string]*hclspec.Spec{
-		"ignored_gpu_ids": hclspec.NewDefault(
-			hclspec.NewAttr("ignored_gpu_ids", "list(string)", false),
-			hclspec.NewLiteral("[]"),
-		),
 		"fingerprint_period": hclspec.NewDefault(
 			hclspec.NewAttr("fingerprint_period", "string", false),
 			hclspec.NewLiteral("\"1m\""),
@@ -73,12 +71,12 @@ var (
 
 // Config contains configuration information for the plugin.
 type Config struct {
-	IgnoredGPUIDs     []string `codec:"ignored_gpu_ids"`
-	FingerprintPeriod string   `codec:"fingerprint_period"`
+	//IgnoredGPUIDs     []string `codec:"ignored_gpu_ids"`
+	FingerprintPeriod string `codec:"fingerprint_period"`
 }
 
-// NvidiaDevice contains all plugin specific data
-type NvidiaDevice struct {
+// VfioGpuDevice contains all plugin specific data
+type VfioGpuDevice struct {
 	// nvmlClient is used to get data from nvidia
 	nvmlClient nvml.NvmlClient
 
@@ -99,34 +97,35 @@ type NvidiaDevice struct {
 	logger log.Logger
 }
 
-// NewNvidiaDevice returns a new nvidia device plugin.
-func NewNvidiaDevice(log log.Logger) *NvidiaDevice {
-	nvmlClient, err := nvml.NewNvmlClient()
+// NewVfioGpuDevice returns a new nvidia device plugin.
+func NewVfioGpuDevice(log log.Logger) *VfioGpuDevice {
+	//nvmlClient, err := nvml.NewNvmlClient()
 	logger := log.Named(pluginName)
-	if err != nil && err.Error() != nvml.UnavailableLib.Error() {
+	/*if err != nil && err.Error() != nvml.UnavailableLib.Error() {
 		logger.Error("unable to initialize Nvidia driver", "reason", err)
-	}
-	return &NvidiaDevice{
+	}*/
+	err := error(nil)
+	return &VfioGpuDevice{
 		logger:        logger,
 		devices:       make(map[string]struct{}),
 		ignoredGPUIDs: make(map[string]struct{}),
-		nvmlClient:    nvmlClient,
-		initErr:       err,
+		//nvmlClient:    nvmlClient,
+		initErr: err,
 	}
 }
 
 // PluginInfo returns information describing the plugin.
-func (d *NvidiaDevice) PluginInfo() (*base.PluginInfoResponse, error) {
+func (d *VfioGpuDevice) PluginInfo() (*base.PluginInfoResponse, error) {
 	return pluginInfo, nil
 }
 
 // ConfigSchema returns the plugins configuration schema.
-func (d *NvidiaDevice) ConfigSchema() (*hclspec.Spec, error) {
+func (d *VfioGpuDevice) ConfigSchema() (*hclspec.Spec, error) {
 	return configSpec, nil
 }
 
 // SetConfig is used to set the configuration of the plugin.
-func (d *NvidiaDevice) SetConfig(cfg *base.Config) error {
+func (d *VfioGpuDevice) SetConfig(cfg *base.Config) error {
 	var config Config
 	if len(cfg.PluginConfig) != 0 {
 		if err := base.MsgPackDecode(cfg.PluginConfig, &config); err != nil {
@@ -134,9 +133,10 @@ func (d *NvidiaDevice) SetConfig(cfg *base.Config) error {
 		}
 	}
 
-	for _, ignoredGPUId := range config.IgnoredGPUIDs {
-		d.ignoredGPUIDs[ignoredGPUId] = struct{}{}
-	}
+	/*
+		for _, ignoredGPUId := range config.IgnoredGPUIDs {
+			d.ignoredGPUIDs[ignoredGPUId] = struct{}{}
+		}*/
 
 	period, err := time.ParseDuration(config.FingerprintPeriod)
 	if err != nil {
@@ -149,7 +149,7 @@ func (d *NvidiaDevice) SetConfig(cfg *base.Config) error {
 
 // Fingerprint streams detected devices. If device changes are detected or the
 // devices health changes, messages will be emitted.
-func (d *NvidiaDevice) Fingerprint(ctx context.Context) (<-chan *device.FingerprintResponse, error) {
+func (d *VfioGpuDevice) Fingerprint(ctx context.Context) (<-chan *device.FingerprintResponse, error) {
 	outCh := make(chan *device.FingerprintResponse)
 	go d.fingerprint(ctx, outCh)
 	return outCh, nil
@@ -166,7 +166,7 @@ func (e *reservationError) Error() string {
 // Reserve returns information on how to mount given devices.
 // Assumption is made that nomad server is responsible for correctness of
 // GPU allocations, handling tricky cases such as double-allocation of single GPU
-func (d *NvidiaDevice) Reserve(deviceIDs []string) (*device.ContainerReservation, error) {
+func (d *VfioGpuDevice) Reserve(deviceIDs []string) (*device.ContainerReservation, error) {
 	if len(deviceIDs) == 0 {
 		return &device.ContainerReservation{}, nil
 	}
@@ -205,7 +205,7 @@ func (d *NvidiaDevice) Reserve(deviceIDs []string) (*device.ContainerReservation
 }
 
 // Stats streams statistics for the detected devices.
-func (d *NvidiaDevice) Stats(ctx context.Context, interval time.Duration) (<-chan *device.StatsResponse, error) {
+func (d *VfioGpuDevice) Stats(ctx context.Context, interval time.Duration) (<-chan *device.StatsResponse, error) {
 	outCh := make(chan *device.StatsResponse)
 	go d.stats(ctx, outCh, interval)
 	return outCh, nil

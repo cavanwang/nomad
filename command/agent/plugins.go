@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"github.com/hashicorp/nomad/helper/pluginutils/catalog"
@@ -24,6 +25,8 @@ func (a *Agent) setupPlugins() error {
 		InternalPlugins:   internal,
 		SupportedVersions: loader.AgentSupportedApiVersions,
 	}
+	by, _ := json.Marshal(a.config)
+	fmt.Printf("----------------------------------agent.setupPlugins config is: %s\n", string(by))
 	l, err := loader.NewPluginLoader(config)
 	if err != nil {
 		return fmt.Errorf("failed to create plugin loader: %v", err)

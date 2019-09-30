@@ -12,7 +12,8 @@ import (
 
 const (
 	// DeviceTypeGPU is a canonical device type for a GPU.
-	DeviceTypeGPU = "gpu"
+	DeviceTypeGPU     = "gpu"
+	DeviceTypeGPUVfio = "vfio-gpu"
 )
 
 // DevicePlugin is the interface for a plugin that can expose detected devices
